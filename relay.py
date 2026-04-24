@@ -1,5 +1,5 @@
 """
-relay.py  —  Gira su Render.com (o qualsiasi VPS pubblico).
+relay.py  —  Gira su Railway.app (o qualsiasi VPS pubblico).
 Mette in comunicazione il SERVER e il CLIENT che sono entrambi
 dietro NAT (router diversi, reti diverse).
 
@@ -11,7 +11,6 @@ import threading
 import time
 import logging
 import os
-from http.server import HTTPServer, BaseHTTPRequestHandler
 
 logging.basicConfig(
     level=logging.INFO,
@@ -20,38 +19,15 @@ logging.basicConfig(
 )
 log = logging.getLogger("relay")
 
-# ── Configurazione ────────────────────────────────────────────────
-# Render assegna la porta via variabile d'ambiente PORT
-HTTP_PORT  = int(os.environ.get("PORT", 8080))   # porta HTTP per Render
-RELAY_PORT = 5900                                  # porta TCP per il relay
+# Railway assegna la porta via variabile d'ambiente PORT
+PORT = int(os.environ.get("PORT", 5900))
 HOST = "0.0.0.0"
 CONNECT_TIMEOUT = 120
 BUFFER = 65536
-# ─────────────────────────────────────────────────────────────────
 
 rooms: dict = {}
 rooms_lock = threading.Lock()
 
-
-# ── Health check HTTP (richiesto da Render) ───────────────────────
-
-class HealthHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b"Relay OK")
-
-    def log_message(self, *args):
-        pass  # silenzia i log HTTP
-
-
-def start_http_server():
-    srv = HTTPServer((HOST, HTTP_PORT), HealthHandler)
-    log.info(f"Health check HTTP su porta {HTTP_PORT}")
-    srv.serve_forever()
-
-
-# ── Relay TCP ─────────────────────────────────────────────────────
 
 def recv_line(conn: socket.socket, timeout=30) -> str:
     conn.settimeout(timeout)
@@ -159,25 +135,17 @@ def handle_connection(conn: socket.socket, addr):
             pass
 
 
-def start_relay():
+def main():
     srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    srv.bind((HOST, RELAY_PORT))
+    srv.bind((HOST, PORT))
     srv.listen(20)
-    log.info(f"Relay TCP in ascolto su {HOST}:{RELAY_PORT}")
+    log.info(f"Relay TCP in ascolto su {HOST}:{PORT}")
     while True:
         conn, addr = srv.accept()
         threading.Thread(target=handle_connection, args=(conn, addr), daemon=True).start()
 
 
-def main():
-    # Avvia health check HTTP in background (richiesto da Render)
-    t_http = threading.Thread(target=start_http_server, daemon=True)
-    t_http.start()
-
-    # Avvia relay TCP (bloccante)
-    start_relay()
-
-
 if __name__ == "__main__":
     main()
+   
